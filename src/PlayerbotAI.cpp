@@ -3321,11 +3321,17 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         return false;
     }
 
-    if (!target)
+    if (!bot || !bot->GetSession() || bot->GetSession()->isLogingOut())
+        return false;
+
+    if (!target || !target->IsInWorld() || target->IsDuringRemoveFromWorld())
         target = bot;
 
     Pet* pet = bot->GetPet();
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo)
+        return false;
+
     if (pet && pet->HasSpell(spellId))
     {
         // List of spell IDs for which we do NOT want to toggle auto-cast or send message
@@ -3402,14 +3408,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
         return false;
     }
 
-    // early return; bot/target world-state check
-    if (!bot->IsInWorld() || bot->IsDuringRemoveFromWorld() ||
-        (target && (!target->IsInWorld() || target->IsDuringRemoveFromWorld())))
-    {
-        return false;
-    }
-
-    Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+    Spell* spell = new Spell(bot, spellInfo, TRIGGERED_NONE); 
     SpellCastTargets targets;
     if (spellInfo->Effects[0].Effect != SPELL_EFFECT_OPEN_LOCK &&
         (spellInfo->Targets & TARGET_FLAG_ITEM || spellInfo->Targets & TARGET_FLAG_GAMEOBJECT_ITEM))
@@ -3498,16 +3497,30 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     //     return false;
 
 
-    // check bot/target world-state just before preparing the actual spell
+    // check if the actual target is valid, spell system uses targets.GetUnitTarget(), GetItemTarget(), GetGOTarget() internally.
     Unit* unitTarget = targets.GetUnitTarget();
-    if (!bot->IsInWorld() || bot->IsDuringRemoveFromWorld() ||
-        (unitTarget && (!unitTarget->IsInWorld() || unitTarget->IsDuringRemoveFromWorld())))
+    if (unitTarget && (!unitTarget->IsInWorld() || unitTarget->IsDuringRemoveFromWorld()))
     {
+        // fail if the spell has a unit target that is invalid or being removed from the world
         delete spell;
         return false;
     }
-    SpellCastResult result = spell->prepare(&targets);
+    Item* itemTarget = targets.GetItemTarget();
+    if (!itemTarget && (spellInfo->Targets & (TARGET_FLAG_ITEM | TARGET_FLAG_GAMEOBJECT_ITEM)))
+    {
+        // fail only if the spell requires a specific item or GO item to cast but the bot does not have one
+        delete spell;
+        return false;
+    }
+    GameObject* goTarget = targets.GetGOTarget();
+    if (goTarget && !goTarget->isSpawned())
+    {
+        // fail if the spell has a GO target that is not spawned or does not exist
+        delete spell;
+        return false;
+    }
 
+    SpellCastResult result = spell->prepare(&targets);
     if (result != SPELL_CAST_OK)
     {
         // if (!sPlayerbotAIConfig->logInGroupOnly || (bot->GetGroup() && HasRealPlayerMaster())) {
@@ -3567,6 +3580,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
             TellMasterNoFacing(out);
         }
 
+        delete spell;
         return false;
     }
     // if (spellInfo->Effects[0].Effect == SPELL_EFFECT_OPEN_LOCK || spellInfo->Effects[0].Effect ==
