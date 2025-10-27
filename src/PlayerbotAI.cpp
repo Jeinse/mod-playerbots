@@ -1769,80 +1769,6 @@ bool PlayerbotAI::IsCombo(Player* player)
            (player->getClass() == CLASS_DRUID && player->HasAura(768));  // cat druid
 }
 
-bool PlayerbotAI::IsRangedDps(Player* player, bool bySpec) { return IsRanged(player, bySpec) && IsDps(player, bySpec); }
-
-bool PlayerbotAI::IsHealAssistantOfIndex(Player* player, int index)
-{
-    Group* group = player->GetGroup();
-    if (!group)
-    {
-        return false;
-    }
-
-    int counter = 0;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-
-        if (!member)
-        {
-            continue;
-        }
-
-        if (IsHeal(member))  // Check if the member is a healer
-        {
-            bool isAssistant = group->IsAssistant(member->GetGUID());
-
-            // Check if the index matches for both assistant and non-assistant healers
-            if ((isAssistant && index == counter) || (!isAssistant && index == counter))
-            {
-                return player == member;
-            }
-
-            counter++;
-        }
-    }
-
-    return false;
-}
-
-bool PlayerbotAI::IsRangedDpsAssistantOfIndex(Player* player, int index)
-{
-    Group* group = player->GetGroup();
-    if (!group)
-    {
-        return false;
-    }
-
-    int counter = 0;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-
-        if (!member)
-        {
-            continue;
-        }
-
-        if (IsRangedDps(member))  // Check if the member is a ranged DPS
-        {
-            bool isAssistant = group->IsAssistant(member->GetGUID());
-
-            // Check the index for both assistant and non-assistant ranges
-            if ((isAssistant && index == counter) || (!isAssistant && index == counter))
-            {
-                return player == member;
-            }
-
-            counter++;
-        }
-    }
-
-    return false;
-}
-
 bool PlayerbotAI::HasAggro(Unit* unit)
 {
     if (!unit)
@@ -2298,54 +2224,107 @@ uint32 PlayerbotAI::GetGroupTankNum(Player* player)
     return result;
 }
 
+bool PlayerbotAI::IsHealAssistantOfIndex(Player* player, int index)
+{
+    Group* group = player->GetGroup();
+    if (!group)
+        return false;
+
+    std::vector<Player*> assistantHealers;
+    std::vector<Player*> nonAssistantHealers;
+    std::vector<Player*> allHealers;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member)
+            continue;
+
+        if (IsHeal(member))
+        {
+            if (group->IsAssistant(member->GetGUID()))
+                assistantHealers.push_back(member);
+            else
+                nonAssistantHealers.push_back(member);
+        }
+    }
+
+    // Combine: assistants before non-assistants
+    allHealers.insert(allHealers.end(), assistantHealers.begin(), assistantHealers.end());
+    allHealers.insert(allHealers.end(), nonAssistantHealers.begin(), nonAssistantHealers.end());
+
+    // Return true if index is valid and matches healer at that index
+    return (index >= 0 && index < static_cast<int>(allHealers.size())) ? player == allHealers[index] : false;
+}
+
+bool PlayerbotAI::IsRangedDps(Player* player, bool bySpec) { return IsRanged(player, bySpec) && IsDps(player, bySpec); }
+
+bool PlayerbotAI::IsRangedDpsAssistantOfIndex(Player* player, int index)
+{
+    Group* group = player->GetGroup();
+    if (!group)
+        return false;
+
+    std::vector<Player*> assistantRangedDps;
+    std::vector<Player*> nonAssistantRangedDps;
+    std::vector<Player*> allRangedDps;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->GetSource();
+        if (!member)
+            continue;
+
+        if (IsRangedDps(member))
+        {
+            if (group->IsAssistant(member->GetGUID()))
+                assistantRangedDps.push_back(member);
+            else
+                nonAssistantRangedDps.push_back(member);
+        }
+    }
+
+    // Combine: assistants before non-assistants
+    allRangedDps.insert(allRangedDps.end(), assistantRangedDps.begin(), assistantRangedDps.end());
+    allRangedDps.insert(allRangedDps.end(), nonAssistantRangedDps.begin(), nonAssistantRangedDps.end());
+
+    // Return true if index is valid and matches DPS at that index, otherwise false
+    return (index >= 0 && index < static_cast<int>(allRangedDps.size())) ? player == allRangedDps[index] : false;
+}
+
 bool PlayerbotAI::IsAssistTank(Player* player) { return IsTank(player) && !IsMainTank(player); }
 
 bool PlayerbotAI::IsAssistTankOfIndex(Player* player, int index)
 {
     Group* group = player->GetGroup();
     if (!group)
-    {
         return false;
-    }
-    int counter = 0;
+
+    std::vector<Player*> assistTanks;
+    std::vector<Player*> nonAssistTanks;
+    std::vector<Player*> allTanks;
+
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->GetSource();
-
         if (!member)
-        {
             continue;
-        }
 
-        if (group->IsAssistant(member->GetGUID()) && IsAssistTank(member))
+        if (IsAssistTank(member))
         {
-            if (index == counter)
-            {
-                return player == member;
-            }
-            counter++;
+            if (group->IsAssistant(member->GetGUID()))
+                assistTanks.push_back(member);
+            else
+                nonAssistTanks.push_back(member);
         }
     }
-    // not enough
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
 
-        if (!member)
-        {
-            continue;
-        }
+    // Combine: assistants before non-assistants
+    allTanks.insert(allTanks.end(), assistTanks.begin(), assistTanks.end());
+    allTanks.insert(allTanks.end(), nonAssistTanks.begin(), nonAssistTanks.end());
 
-        if (!group->IsAssistant(member->GetGUID()) && IsAssistTank(member))
-        {
-            if (index == counter)
-            {
-                return player == member;
-            }
-            counter++;
-        }
-    }
-    return false;
+    // Return true if index is valid and matches tank at that index, otherwise false
+    return (index >= 0 && index < static_cast<int>(allTanks.size())) ? player == allTanks[index] : false;
 }
 
 namespace acore
