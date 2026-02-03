@@ -15,9 +15,11 @@
 我们提供了一个简单的方法来克隆该模块：
 
 ```bash
+
 git clone https://github.com/mod-playerbots/azerothcore-wotlk.git --branch=Playerbot
 cd azerothcore-wotlk/modules
 git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
+
 ```
 
 ## 快速开始与文档
