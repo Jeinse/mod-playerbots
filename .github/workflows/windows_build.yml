@@ -1,9 +1,6 @@
 name: windows-build
 on:
-  push:
-    branches: [ "master", "test-staging" ]
-  pull_request:
-    branches: [ "master", "test-staging" ]
+  workflow_dispatch: 
 
 concurrency:
   group: "windows-build-${{ github.event.pull_request.number }}"
@@ -47,3 +44,8 @@ jobs:
         run: |
           export CTOOLS_BUILD=all
           ./acore.sh compiler build
+      - name: upload-artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: out-files
+          path: D:/a/Playerbots-Module/Playerbots-Module
