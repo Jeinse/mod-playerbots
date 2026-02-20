@@ -1,0 +1,1 @@
+GRANT ALL PRIVILEGES ON acore_playerbots.* TO 'acore'@'localhost';
